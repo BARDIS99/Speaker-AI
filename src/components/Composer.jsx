@@ -23,7 +23,7 @@ export default function Composer({ onSend, onStop, isStreaming, disabled }) {
 
   const toggleVoice = () => {
     if (!recognitionRef.current) {
-      alert('Speech recognition is not available in this browser.');
+      console.warn('Speech recognition is not available in this browser.');
       return;
     }
     if (listening) {

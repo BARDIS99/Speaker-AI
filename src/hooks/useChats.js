@@ -1,12 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
+const LOCAL_STORAGE_KEY = 'speaker_ai_chats';
+
+function getLocalChats() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalChats(chats) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(chats));
+  } catch {}
+}
+
 export function useChats(user) {
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const loadChats = useCallback(async () => {
-    if (!user || !supabase) return;
+    if (!user) {
+      setChats([]);
+      return;
+    }
+    if (!supabase) {
+      setChats(getLocalChats());
+      return;
+    }
     setLoading(true);
     const { data, error } = await supabase
       .from('chats')
@@ -22,7 +46,25 @@ export function useChats(user) {
   }, [loadChats]);
 
   const createChat = useCallback(async (title = 'New Chat') => {
-    if (!user || !supabase) return null;
+    if (!user) return null;
+    const newChat = {
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      title,
+      pinned: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (!supabase) {
+      setChats((prev) => {
+        const next = [newChat, ...prev];
+        saveLocalChats(next);
+        return next;
+      });
+      return newChat;
+    }
+
     const { data, error } = await supabase
       .from('chats')
       .insert({ user_id: user.id, title })
@@ -34,24 +76,47 @@ export function useChats(user) {
   }, [user]);
 
   const renameChat = useCallback(async (id, title) => {
-    if (!supabase) return;
+    if (!supabase) {
+      setChats((prev) => {
+        const next = prev.map((c) => (c.id === id ? { ...c, title, updated_at: new Date().toISOString() } : c));
+        saveLocalChats(next);
+        return next;
+      });
+      return;
+    }
     const { error } = await supabase.from('chats').update({ title }).eq('id', id);
     if (!error) setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
   }, []);
 
   const togglePin = useCallback(async (id, pinned) => {
-    if (!supabase) return;
+    if (!supabase) {
+      setChats((prev) => {
+        const next = prev
+          .map((c) => (c.id === id ? { ...c, pinned } : c))
+          .sort((a, b) => (b.pinned - a.pinned) || (new Date(b.updated_at) - new Date(a.updated_at)));
+        saveLocalChats(next);
+        return next;
+      });
+      return;
+    }
     const { error } = await supabase.from('chats').update({ pinned }).eq('id', id);
     if (!error) {
       setChats((prev) => {
         const updated = prev.map((c) => (c.id === id ? { ...c, pinned } : c));
-        return updated.sort((a, b) => (b.pinned - a.pinned) || new Date(b.updated_at) - new Date(a.updated_at));
+        return updated.sort((a, b) => (b.pinned - a.pinned) || (new Date(b.updated_at) - new Date(a.updated_at)));
       });
     }
   }, []);
 
   const deleteChat = useCallback(async (id) => {
-    if (!supabase) return;
+    if (!supabase) {
+      setChats((prev) => {
+        const next = prev.filter((c) => c.id !== id);
+        saveLocalChats(next);
+        return next;
+      });
+      return;
+    }
     const { error } = await supabase.from('chats').delete().eq('id', id);
     if (!error) setChats((prev) => prev.filter((c) => c.id !== id));
   }, []);

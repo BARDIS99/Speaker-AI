@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { config } from '../config/index.js';
 import { PROVIDERS, PERSONAS } from '../config/providers.js';
 
@@ -7,28 +7,27 @@ function getSystemPrompt(personaId) {
 }
 
 async function* streamGemini(messages, personaId, signal) {
-  if (!config.keys.gemini) throw new Error('Gemini API key not configured');
-  const genAI = new GoogleGenerativeAI(config.keys.gemini);
-  const model = genAI.getGenerativeModel({ model: PROVIDERS.gemini.model });
+  const apiKey = config.keys.gemini || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('Gemini API key not configured');
+  const ai = new GoogleGenAI({ apiKey });
   const system = getSystemPrompt(personaId);
 
-  const history = messages.slice(0, -1).map((m) => ({
+  const contents = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
-  const last = messages[messages.length - 1];
 
-  const chat = model.startChat({
-    history: [
-      { role: 'user', parts: [{ text: system }] },
-      { role: 'model', parts: [{ text: 'Understood. I will follow these instructions.' }] },
-      ...history,
-    ],
+  const responseStream = await ai.models.generateContentStream({
+    model: PROVIDERS.gemini.model,
+    contents,
+    config: {
+      systemInstruction: system,
+    },
   });
 
-  const result = await chat.sendMessageStream(last.content, { signal });
-  for await (const chunk of result.stream) {
-    const text = chunk.text();
+  for await (const chunk of responseStream) {
+    if (signal?.aborted) break;
+    const text = chunk.text;
     if (text) yield text;
   }
 }
@@ -127,11 +126,12 @@ export async function* streamChat({ provider, messages, personaId, signal }) {
 }
 
 export function getAvailableModels() {
+  const geminiKey = config.keys.gemini || process.env.GEMINI_API_KEY;
   return Object.values(PROVIDERS).map((p) => ({
     id: p.id,
     name: p.name,
     model: p.model,
     supportsImages: p.supportsImages,
-    available: !!config.keys[p.id],
+    available: p.id === 'gemini' ? !!geminiKey : !!config.keys[p.id],
   }));
 }
