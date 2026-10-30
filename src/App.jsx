@@ -4,14 +4,15 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import Composer from './components/Composer';
+import LandingPage from './components/LandingPage';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useMessages } from './hooks/useMessages';
 import { fetchModels, streamChat } from './lib/api';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles, ArrowRight } from 'lucide-react';
 
 const STARTERS = [
-  'Explain quantum computing simply',
+  'Explain quantum computing simply with Google Gemini',
   'Help me debug a React useEffect infinite loop',
   'Write a professional email to decline a meeting',
   'What are the key metrics for a SaaS startup?',
@@ -22,6 +23,7 @@ export default function App() {
   const { chats, createChat, renameChat, togglePin, deleteChat, searchChats } = useChats(user);
   const { messages, setMessages, loadMessages, addMessage, clearMessages } = useMessages();
 
+  const [view, setView] = useState('landing');
   const [models, setModels] = useState([]);
   const [provider, setProvider] = useState(() => localStorage.getItem('provider') || 'gemini');
   const [persona, setPersona] = useState(() => localStorage.getItem('persona') || 'default');
@@ -32,6 +34,8 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState(null);
+  const [prefilledText, setPrefilledText] = useState('');
+
   const abortRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -51,6 +55,24 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
+
+  const handleLaunchChat = useCallback(({ provider: targetProvider = 'gemini', prompt = '' } = {}) => {
+    if (targetProvider) setProvider(targetProvider);
+    if (prompt) setPrefilledText(prompt);
+    setView('chat');
+  }, []);
+
+  const handleSignInAndLaunch = useCallback(async (providerName) => {
+    try {
+      await signIn(providerName);
+      setView('chat');
+      setProvider('gemini');
+      setPrefilledText('Hello Google Gemini! Introduce yourself and how you can help me.');
+    } catch (err) {
+      setError(err.message || 'Sign in failed');
+      setView('chat');
+    }
+  }, [signIn]);
 
   const handleNewChat = useCallback(async () => {
     if (!user) return;
@@ -149,8 +171,23 @@ export default function App() {
     );
   }
 
+  // Render Landing Page
+  if (view === 'landing') {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white relative overflow-x-hidden">
+        <Background3D theme={bgTheme} />
+        <LandingPage
+          onLaunchChat={handleLaunchChat}
+          onSignIn={handleSignInAndLaunch}
+          user={user}
+        />
+      </div>
+    );
+  }
+
+  // Render Chat Studio View
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden bg-gray-950 text-white">
       <Background3D theme={bgTheme} />
       <Header
         models={models}
@@ -164,6 +201,11 @@ export default function App() {
         onSignIn={signIn}
         onSignOut={signOut}
         onNewChat={handleNewChat}
+        onOpenLanding={() => setView('landing')}
+        onGeminiTap={() => {
+          setProvider('gemini');
+          setPrefilledText('Explain Google Gemini 2.5 Flash architecture and multimodal reasoning capabilities.');
+        }}
       />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
@@ -183,25 +225,49 @@ export default function App() {
           <div className="flex-1 overflow-y-auto px-4 py-6">
             <div className="max-w-3xl mx-auto space-y-4">
               {messages.length === 0 && !streamingContent && (
-                <div className="text-center py-16 animate-fade-in">
-                  <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                    Speaker AI
-                  </h1>
-                  <p className="text-gray-400 mb-8">How can I help you today?</p>
-                  {!isConfigured && (
-                    <p className="text-amber-400 text-sm mb-4">Supabase not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.</p>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto">
+                <div className="text-center py-12 animate-fade-in space-y-6">
+                  <div>
+                    {/* Google Gemini Quick Tap Hero Badge in Empty State */}
+                    <button
+                      onClick={() => {
+                        setProvider('gemini');
+                        setPrefilledText('Explain how Google Gemini 2.5 Flash processes streaming tokens.');
+                      }}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-xs font-medium text-indigo-300 hover:bg-indigo-500/20 transition mb-3 cursor-pointer"
+                    >
+                      <Sparkles size={14} className="text-indigo-400" />
+                      <span>Google Gemini 2.5 Flash Mode Active · Tap to test</span>
+                    </button>
+
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-cyan-400 bg-clip-text text-transparent">
+                      Speaker AI Studio
+                    </h1>
+                    <p className="text-gray-400 text-sm mt-1">What would you like to explore or solve today?</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto text-left">
                     {STARTERS.map((s) => (
                       <button
                         key={s}
-                        onClick={() => handleSend(s)}
-                        disabled={!user}
-                        className="glass rounded-xl px-4 py-3 text-sm text-left hover:bg-white/10 transition disabled:opacity-50"
+                        onClick={() => {
+                          setProvider('gemini');
+                          setPrefilledText(s);
+                        }}
+                        className="glass rounded-xl px-4 py-3 text-xs sm:text-sm hover:glass-strong hover:border-indigo-500/40 transition flex items-center justify-between group"
                       >
-                        {s}
+                        <span className="text-gray-200 group-hover:text-white transition-colors">{s}</span>
+                        <ArrowRight size={13} className="text-indigo-400 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
                       </button>
                     ))}
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setView('landing')}
+                      className="text-xs text-gray-500 hover:text-gray-300 underline underline-offset-4 transition"
+                    >
+                      ← Back to Speaker AI Landing Page
+                    </button>
                   </div>
                 </div>
               )}
@@ -217,8 +283,9 @@ export default function App() {
                 <MessageBubble message={{ role: 'assistant', content: streamingContent }} isLast={false} />
               )}
               {isStreaming && !streamingContent && (
-                <div className="flex items-center gap-2 text-gray-400 text-sm">
-                  <Loader2 size={16} className="animate-spin" /> Thinking...
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                  <Loader2 size={16} className="animate-spin text-indigo-400" />
+                  <span>Thinking with {provider === 'gemini' ? 'Google Gemini 2.5 Flash' : provider}...</span>
                 </div>
               )}
               {error && (
@@ -229,7 +296,16 @@ export default function App() {
               <div ref={bottomRef} />
             </div>
           </div>
-          <Composer onSend={handleSend} onStop={handleStop} isStreaming={isStreaming} disabled={!user} />
+          <Composer
+            onSend={handleSend}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+            disabled={!user}
+            provider={provider}
+            setProvider={setProvider}
+            prefilledText={prefilledText}
+            onClearPrefilledText={() => setPrefilledText('')}
+          />
         </main>
       </div>
     </div>

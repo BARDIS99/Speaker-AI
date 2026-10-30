@@ -2,7 +2,7 @@ export const PROVIDERS = {
   gemini: {
     id: 'gemini',
     name: 'Google Gemini',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
     supportsImages: true,
     supportsStreaming: true,
   },

@@ -9,7 +9,14 @@ function getSystemPrompt(personaId) {
 async function* streamGemini(messages, personaId, signal) {
   const apiKey = config.keys.gemini || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Gemini API key not configured');
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
   const system = getSystemPrompt(personaId);
 
   const contents = messages.map((m) => ({
@@ -17,18 +24,25 @@ async function* streamGemini(messages, personaId, signal) {
     parts: [{ text: m.content }],
   }));
 
-  const responseStream = await ai.models.generateContentStream({
-    model: PROVIDERS.gemini.model,
-    contents,
-    config: {
-      systemInstruction: system,
-    },
-  });
+  try {
+    const responseStream = await ai.models.generateContentStream({
+      model: PROVIDERS.gemini.model,
+      contents,
+      config: {
+        systemInstruction: system,
+      },
+    });
 
-  for await (const chunk of responseStream) {
-    if (signal?.aborted) break;
-    const text = chunk.text;
-    if (text) yield text;
+    for await (const chunk of responseStream) {
+      if (signal?.aborted) break;
+      const text = chunk.text;
+      if (text) yield text;
+    }
+  } catch (err) {
+    if (err.message?.includes('API_KEY_INVALID') || err.message?.includes('API key not valid')) {
+      throw new Error('Google Gemini API key is missing or needs to be selected in the Settings > Secrets panel.');
+    }
+    throw err;
   }
 }
 

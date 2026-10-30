@@ -38,18 +38,33 @@ export function useAuth() {
   }, []);
 
   const signIn = useCallback(async (provider) => {
+    const providerKey = provider === 'x' ? 'twitter' : provider;
     if (!isSupabaseConfigured()) {
+      const name =
+        provider === 'google'
+          ? 'Google Member'
+          : provider === 'github'
+          ? 'GitHub Developer'
+          : provider === 'x'
+          ? 'X Creator'
+          : provider === 'discord'
+          ? 'Discord Community Member'
+          : 'Speaker AI Member';
+
       const mockUser = {
-        id: `guest-${provider}`,
-        email: `${provider}-user@speaker.ai`,
-        user_metadata: { name: `${provider.charAt(0).toUpperCase() + provider.slice(1)} User` },
+        id: `user-${provider}`,
+        email: `${provider}.user@speaker.ai`,
+        user_metadata: {
+          name,
+          avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${provider}&backgroundColor=6366f1`,
+        },
       };
       setUser(mockUser);
       setSession({ access_token: `guest-${provider}-token`, user: mockUser });
-      return;
+      return mockUser;
     }
     const { error } = await supabase.auth.signInWithOAuth({
-      provider,
+      provider: providerKey,
       options: { redirectTo: window.location.origin },
     });
     if (error) throw error;
