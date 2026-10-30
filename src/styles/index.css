@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100;
+    @apply bg-gemini-dark text-gray-100 font-sans selection:bg-blue-500/30 selection:text-white antialiased;
   }
   ::-webkit-scrollbar {
     width: 6px;
@@ -14,15 +14,21 @@
     @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-700 rounded-full;
+    @apply bg-[#333537] rounded-full hover:bg-[#444746];
   }
 }
 
 @layer components {
+  .gemini-pill {
+    @apply bg-gemini-surface border border-gemini-border rounded-[28px] shadow-lg shadow-black/40;
+  }
+  .gemini-card {
+    @apply bg-gemini-surface hover:bg-gemini-elevated border border-gemini-border/60 hover:border-gemini-border rounded-2xl transition duration-200;
+  }
   .glass {
     @apply bg-white/5 backdrop-blur-xl border border-white/10;
   }
   .glass-strong {
-    @apply bg-white/10 backdrop-blur-2xl border border-white/15;
+    @apply bg-gemini-surface backdrop-blur-2xl border border-gemini-border;
   }
 }

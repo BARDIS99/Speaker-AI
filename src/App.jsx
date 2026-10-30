@@ -1,51 +1,71 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Background3D from './components/Background3D';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import Composer from './components/Composer';
-import LandingPage from './components/LandingPage';
+import GeminiApiKeyModal from './components/GeminiApiKeyModal';
+import Background3D from './components/Background3D';
+import { ZentraSparkle } from './components/GeminiIcons';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useMessages } from './hooks/useMessages';
 import { fetchModels, streamChat } from './lib/api';
-import { Loader2, Sparkles, ArrowRight } from 'lucide-react';
+import { Compass, Lightbulb, Code2, PenTool, AlertCircle, Key } from 'lucide-react';
 
-const STARTERS = [
-  'Explain quantum computing simply with Google Gemini',
-  'Help me debug a React useEffect infinite loop',
-  'Write a professional email to decline a meeting',
-  'What are the key metrics for a SaaS startup?',
+const ZENTRA_CARDS = [
+  {
+    title: 'Help me draft an email',
+    prompt: 'Help me write a warm, professional thank you email to a mentor who gave me career guidance.',
+    icon: PenTool,
+    color: 'text-rose-400',
+  },
+  {
+    title: 'Explain a complex concept',
+    prompt: 'Explain quantum computing and superposition in simple terms with everyday analogies.',
+    icon: Compass,
+    color: 'text-amber-400',
+  },
+  {
+    title: 'Code review & debugging',
+    prompt: 'Review my code logic for infinite loops, race conditions, and recommend best practices.',
+    icon: Code2,
+    color: 'text-emerald-400',
+  },
+  {
+    title: 'Brainstorm creative ideas',
+    prompt: 'Brainstorm 5 innovative, useful AI application ideas for modern developers and students.',
+    icon: Lightbulb,
+    color: 'text-sky-400',
+  },
 ];
 
 export default function App() {
-  const { user, session, loading: authLoading, signIn, signOut, isConfigured } = useAuth();
+  const { user, session, loading: authLoading, signIn, signOut } = useAuth();
   const { chats, createChat, renameChat, togglePin, deleteChat, searchChats } = useChats(user);
   const { messages, setMessages, loadMessages, addMessage, clearMessages } = useMessages();
 
-  const [view, setView] = useState('landing');
-  const [models, setModels] = useState([]);
-  const [provider, setProvider] = useState(() => localStorage.getItem('provider') || 'gemini');
-  const [persona, setPersona] = useState(() => localStorage.getItem('persona') || 'default');
-  const [bgTheme, setBgTheme] = useState(() => localStorage.getItem('bgTheme') || 'blue');
+  const [provider, setProvider] = useState('gemini');
   const [activeChatId, setActiveChatId] = useState(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState(null);
   const [prefilledText, setPrefilledText] = useState('');
+  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
+  const [isKeyConfigured, setIsKeyConfigured] = useState(true);
 
   const abortRef = useRef(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    fetchModels().then((d) => setModels(d.models || [])).catch(() => {});
+    fetchModels()
+      .then((d) => {
+        const geminiModel = d.models?.find((m) => m.id === 'gemini');
+        setIsKeyConfigured(!!geminiModel?.available);
+      })
+      .catch(() => {});
   }, []);
-
-  useEffect(() => { localStorage.setItem('provider', provider); }, [provider]);
-  useEffect(() => { localStorage.setItem('persona', persona); }, [persona]);
-  useEffect(() => { localStorage.setItem('bgTheme', bgTheme); }, [bgTheme]);
 
   useEffect(() => {
     if (activeChatId) loadMessages(activeChatId);
@@ -56,30 +76,13 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  const handleLaunchChat = useCallback(({ provider: targetProvider = 'gemini', prompt = '' } = {}) => {
-    if (targetProvider) setProvider(targetProvider);
-    if (prompt) setPrefilledText(prompt);
-    setView('chat');
-  }, []);
-
-  const handleSignInAndLaunch = useCallback(async (providerName) => {
-    try {
-      await signIn(providerName);
-      setView('chat');
-      setProvider('gemini');
-      setPrefilledText('Hello Google Gemini! Introduce yourself and how you can help me.');
-    } catch (err) {
-      setError(err.message || 'Sign in failed');
-      setView('chat');
-    }
-  }, [signIn]);
-
   const handleNewChat = useCallback(async () => {
     if (!user) return;
-    const chat = await createChat();
+    const chat = await createChat('New chat');
     if (chat) {
       setActiveChatId(chat.id);
       clearMessages();
+      setError(null);
     }
   }, [user, createChat, clearMessages]);
 
@@ -90,7 +93,7 @@ export default function App() {
 
   const handleSend = async (text) => {
     if (!session?.access_token) {
-      setError('Please sign in to chat');
+      setError('Please sign in to chat with Zentra.');
       return;
     }
     setError(null);
@@ -113,8 +116,8 @@ export default function App() {
     let full = '';
     try {
       await streamChat({
-        provider,
-        persona,
+        provider: 'gemini',
+        persona: 'default',
         messages: history.map((m) => ({ role: m.role, content: m.content })),
         token: session.access_token,
         signal: controller.signal,
@@ -125,8 +128,7 @@ export default function App() {
         onDone: async (data) => {
           if (data?.aborted) return;
           const final = data?.content || full;
-          const usedProvider = data?.provider || provider;
-          await addMessage(chatId, 'assistant', final, usedProvider);
+          await addMessage(chatId, 'assistant', final, 'gemini');
           setStreamingContent('');
           setIsStreaming(false);
         },
@@ -135,12 +137,12 @@ export default function App() {
           setIsStreaming(false);
           setStreamingContent('');
         },
-        onFallback: (fb) => {
-          setError(`Switched from ${fb.from} to ${fb.to}: ${fb.reason}`);
-        },
+        onFallback: () => {},
       });
     } catch (err) {
-      if (err.name !== 'AbortError') setError(err.message);
+      if (err.name !== 'AbortError') {
+        setError(err.message || 'Unable to connect to Zentra API');
+      }
       setIsStreaming(false);
       setStreamingContent('');
     }
@@ -150,7 +152,7 @@ export default function App() {
     abortRef.current?.abort();
     setIsStreaming(false);
     if (streamingContent && activeChatId) {
-      addMessage(activeChatId, 'assistant', streamingContent + ' [stopped]', provider);
+      addMessage(activeChatId, 'assistant', streamingContent + ' [stopped]', 'gemini');
       setStreamingContent('');
     }
   };
@@ -163,51 +165,34 @@ export default function App() {
     }
   };
 
-  if (authLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-950">
-        <Loader2 className="animate-spin text-indigo-400" size={32} />
-      </div>
-    );
-  }
+  const handleModifyResponse = (type) => {
+    const prompt = `Please rewrite your previous response to be ${type.toLowerCase()}.`;
+    handleSend(prompt);
+  };
 
-  // Render Landing Page
-  if (view === 'landing') {
-    return (
-      <div className="min-h-screen bg-gray-950 text-white relative overflow-x-hidden">
-        <Background3D theme={bgTheme} />
-        <LandingPage
-          onLaunchChat={handleLaunchChat}
-          onSignIn={handleSignInAndLaunch}
-          user={user}
-        />
-      </div>
-    );
-  }
+  const userName = user?.user_metadata?.name?.split(' ')[0] || 'Traveler';
 
-  // Render Chat Studio View
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-gray-950 text-white">
-      <Background3D theme={bgTheme} />
+    <div className="h-screen flex flex-col bg-gemini-dark text-gray-100 overflow-hidden font-sans relative">
+      {/* 3D Morphing Particle Wave Sphere in Background (from SS.jpeg) */}
+      <Background3D isStreaming={isStreaming} />
+
+      {/* Top Header */}
       <Header
-        models={models}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         provider={provider}
         setProvider={setProvider}
-        persona={persona}
-        setPersona={setPersona}
-        bgTheme={bgTheme}
-        setBgTheme={setBgTheme}
         user={user}
         onSignIn={signIn}
         onSignOut={signOut}
         onNewChat={handleNewChat}
-        onOpenLanding={() => setView('landing')}
-        onGeminiTap={() => {
-          setProvider('gemini');
-          setPrefilledText('Explain Google Gemini 2.5 Flash architecture and multimodal reasoning capabilities.');
-        }}
+        onOpenApiKeyGuide={() => setApiKeyModalOpen(true)}
+        isKeyConfigured={isKeyConfigured}
       />
-      <div className="flex flex-1 overflow-hidden">
+
+      <div className="flex flex-1 overflow-hidden relative z-10">
+        {/* Left Navigation Drawer */}
         <Sidebar
           chats={searchQuery ? searchChats(searchQuery) : chats}
           activeChatId={activeChatId}
@@ -215,99 +200,131 @@ export default function App() {
           onNew={handleNewChat}
           onRename={renameChat}
           onPin={togglePin}
-          onDelete={(id) => { deleteChat(id); if (activeChatId === id) setActiveChatId(null); }}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onDelete={(id) => {
+            deleteChat(id);
+            if (activeChatId === id) setActiveChatId(null);
+          }}
+          collapsed={!sidebarOpen}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
+          onOpenApiKeyGuide={() => setApiKeyModalOpen(true)}
         />
-        <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-4 py-6">
+
+        {/* Center Chat View */}
+        <main className="flex-1 flex flex-col overflow-hidden relative min-w-0">
+          <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
             <div className="max-w-3xl mx-auto space-y-4">
+              {/* Empty State Greeting & Cards */}
               {messages.length === 0 && !streamingContent && (
-                <div className="text-center py-12 animate-fade-in space-y-6">
+                <div className="py-8 sm:py-16 space-y-8 animate-fade-in">
+                  {/* Zentra Gradient Greeting */}
                   <div>
-                    {/* Google Gemini Quick Tap Hero Badge in Empty State */}
-                    <button
-                      onClick={() => {
-                        setProvider('gemini');
-                        setPrefilledText('Explain how Google Gemini 2.5 Flash processes streaming tokens.');
-                      }}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-xs font-medium text-indigo-300 hover:bg-indigo-500/20 transition mb-3 cursor-pointer"
-                    >
-                      <Sparkles size={14} className="text-indigo-400" />
-                      <span>Google Gemini 2.5 Flash Mode Active · Tap to test</span>
-                    </button>
-
-                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 via-purple-300 to-cyan-400 bg-clip-text text-transparent">
-                      Speaker AI Studio
+                    <h1 className="text-4xl sm:text-5xl font-medium tracking-tight bg-gradient-to-r from-sky-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent">
+                      Hello, {userName}
                     </h1>
-                    <p className="text-gray-400 text-sm mt-1">What would you like to explore or solve today?</p>
+                    <h2 className="text-3xl sm:text-4xl font-medium tracking-tight text-gray-400/80 mt-1">
+                      How can Zentra help you today?
+                    </h2>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto text-left">
-                    {STARTERS.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => {
-                          setProvider('gemini');
-                          setPrefilledText(s);
-                        }}
-                        className="glass rounded-xl px-4 py-3 text-xs sm:text-sm hover:glass-strong hover:border-indigo-500/40 transition flex items-center justify-between group"
-                      >
-                        <span className="text-gray-200 group-hover:text-white transition-colors">{s}</span>
-                        <ArrowRight size={13} className="text-indigo-400 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      onClick={() => setView('landing')}
-                      className="text-xs text-gray-500 hover:text-gray-300 underline underline-offset-4 transition"
-                    >
-                      ← Back to Speaker AI Landing Page
-                    </button>
+                  {/* 4 Zentra Suggestion Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
+                    {ZENTRA_CARDS.map((card, idx) => {
+                      const Icon = card.icon;
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => setPrefilledText(card.prompt)}
+                          className="p-4 rounded-2xl bg-gemini-surface/85 backdrop-blur-md hover:bg-gemini-elevated/95 border border-gemini-border/70 hover:border-sky-500/40 text-left transition duration-200 flex flex-col justify-between h-40 group shadow-lg hover:shadow-sky-500/10"
+                        >
+                          <p className="text-sm font-medium text-gray-200 group-hover:text-white line-clamp-3 leading-snug">
+                            {card.prompt}
+                          </p>
+                          <div className="flex justify-end pt-2">
+                            <div className="w-9 h-9 rounded-full bg-gemini-dark/80 flex items-center justify-center border border-gemini-border/60 group-hover:border-sky-400/50 group-hover:scale-105 transition">
+                              <Icon size={17} className={card.color} />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
+
+              {/* Chat Message Stream */}
               {messages.map((m, i) => (
                 <MessageBubble
                   key={m.id || i}
                   message={m}
                   isLast={i === messages.length - 1 && !isStreaming}
                   onRegenerate={handleRegenerate}
+                  onModifyResponse={handleModifyResponse}
                 />
               ))}
+
+              {/* Real-time Streaming Response */}
               {streamingContent && (
-                <MessageBubble message={{ role: 'assistant', content: streamingContent }} isLast={false} />
+                <MessageBubble
+                  message={{ role: 'assistant', content: streamingContent }}
+                  isLast={false}
+                />
               )}
+
+              {/* Zentra Shimmering Thinking Indicator */}
               {isStreaming && !streamingContent && (
-                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
-                  <Loader2 size={16} className="animate-spin text-indigo-400" />
-                  <span>Thinking with {provider === 'gemini' ? 'Google Gemini 2.5 Flash' : provider}...</span>
+                <div className="flex items-center gap-3 py-4 text-gray-400 text-sm animate-pulse bg-gemini-surface/50 backdrop-blur-md px-4 rounded-2xl border border-gemini-border/40 w-fit">
+                  <ZentraSparkle className="w-5 h-5 animate-spin" id="zentra_thinking_sparkle" />
+                  <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent font-medium">
+                    Thinking with Zentra 3.8 Flash...
+                  </span>
                 </div>
               )}
+
+              {/* Error banner with Free Key Guide shortcut */}
               {error && (
-                <div className="glass border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-300">
-                  {error}
+                <div className="p-4 rounded-2xl bg-red-950/60 backdrop-blur-md border border-red-500/40 text-sm text-red-200 flex items-start justify-between gap-3 animate-fade-in shadow-xl">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-red-100">Zentra Notice</div>
+                      <div className="text-xs text-red-300/90 mt-0.5">{error}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setApiKeyModalOpen(true)}
+                    className="px-3 py-1.5 rounded-full bg-red-500/20 hover:bg-red-500/30 text-xs font-medium text-red-200 transition shrink-0 flex items-center gap-1.5"
+                  >
+                    <Key size={13} />
+                    <span>Free Key Guide</span>
+                  </button>
                 </div>
               )}
+
               <div ref={bottomRef} />
             </div>
           </div>
+
+          {/* Floating Prompt Bar at the bottom */}
           <Composer
             onSend={handleSend}
             onStop={handleStop}
             isStreaming={isStreaming}
             disabled={!user}
-            provider={provider}
-            setProvider={setProvider}
             prefilledText={prefilledText}
             onClearPrefilledText={() => setPrefilledText('')}
+            onOpenApiKeyGuide={() => setApiKeyModalOpen(true)}
           />
         </main>
       </div>
+
+      {/* Zentra Free API Key Documentation Modal */}
+      <GeminiApiKeyModal
+        isOpen={apiKeyModalOpen}
+        onClose={() => setApiKeyModalOpen(false)}
+        isKeyConfigured={isKeyConfigured}
+      />
     </div>
   );
 }

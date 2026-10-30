@@ -8,7 +8,7 @@ function getSystemPrompt(personaId) {
 
 async function* streamGemini(messages, personaId, signal) {
   const apiKey = config.keys.gemini || process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Google Gemini API key is missing or needs to be selected in the Settings > Secrets panel.');
+  if (!apiKey) throw new Error('Google Gemini API key is missing. You can get a free API key at https://aistudio.google.com/app/apikey (no credit card required).');
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
@@ -39,8 +39,13 @@ async function* streamGemini(messages, personaId, signal) {
       if (text) yield text;
     }
   } catch (err) {
-    if (err.message?.includes('API_KEY_INVALID') || err.message?.includes('API key not valid')) {
-      throw new Error('Google Gemini API key is missing or needs to be selected in the Settings > Secrets panel.');
+    if (
+      err.message?.includes('API_KEY_INVALID') ||
+      err.message?.includes('API key not valid') ||
+      err.message?.includes('free tier is not available') ||
+      err.message?.includes('PERMISSION_DENIED')
+    ) {
+      throw new Error('Gemini API access notice: Please generate your free API key at https://aistudio.google.com/app/apikey and configure GEMINI_API_KEY.');
     }
     throw err;
   }

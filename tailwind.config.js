@@ -5,6 +5,14 @@ export default {
   theme: {
     extend: {
       colors: {
+        gemini: {
+          dark: '#131314',
+          surface: '#1e1f20',
+          elevated: '#282a2c',
+          border: '#333537',
+          blue: '#1a73e8',
+          'blue-light': '#8ab4f8',
+        },
         glass: 'rgba(255, 255, 255, 0.05)',
         'glass-border': 'rgba(255, 255, 255, 0.1)',
       },
