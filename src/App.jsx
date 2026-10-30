@@ -3,14 +3,15 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MessageBubble from './components/MessageBubble';
 import Composer from './components/Composer';
-import GeminiApiKeyModal from './components/GeminiApiKeyModal';
+import AuthModal from './components/AuthModal';
+import LandingPage from './components/LandingPage';
 import Background3D from './components/Background3D';
 import { ZentraSparkle } from './components/GeminiIcons';
 import { useAuth } from './hooks/useAuth';
 import { useChats } from './hooks/useChats';
 import { useMessages } from './hooks/useMessages';
-import { fetchModels, streamChat } from './lib/api';
-import { Compass, Lightbulb, Code2, PenTool, AlertCircle, Key } from 'lucide-react';
+import { checkKeys, streamChat } from './lib/api';
+import { Compass, Lightbulb, Code2, PenTool, AlertCircle } from 'lucide-react';
 
 const ZENTRA_CARDS = [
   {
@@ -39,12 +40,20 @@ const ZENTRA_CARDS = [
   },
 ];
 
+const ORDERED_PROVIDERS = ['gemini', 'groq', 'openrouter', 'mistral'];
+
 export default function App() {
-  const { user, session, loading: authLoading, signIn, signOut } = useAuth();
+  const { user, session, loading: authLoading, signIn, signOut, switchAccount } = useAuth();
   const { chats, createChat, renameChat, togglePin, deleteChat, searchChats } = useChats(user);
   const { messages, setMessages, loadMessages, addMessage, clearMessages } = useMessages();
 
   const [provider, setProvider] = useState('gemini');
+  const [keyStatuses, setKeyStatuses] = useState({
+    gemini: 'missing',
+    groq: 'missing',
+    openrouter: 'missing',
+    mistral: 'missing',
+  });
   const [activeChatId, setActiveChatId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,20 +61,43 @@ export default function App() {
   const [streamingContent, setStreamingContent] = useState('');
   const [error, setError] = useState(null);
   const [prefilledText, setPrefilledText] = useState('');
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
-  const [isKeyConfigured, setIsKeyConfigured] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTitle, setAuthModalTitle] = useState('Sign in to Zentra');
+  const [currentView, setCurrentView] = useState('chat'); // 'chat' | 'landing'
 
   const abortRef = useRef(null);
   const bottomRef = useRef(null);
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
+
+  // 1. KEY STATUS CHECK: Real check for each AI provider on app load and picker open
+  const refreshKeyStatuses = useCallback(async () => {
+    try {
+      const data = await checkKeys();
+      const statuses = {
+        gemini: data.gemini || 'missing',
+        groq: data.groq || 'missing',
+        openrouter: data.openrouter || 'missing',
+        mistral: data.mistral || 'missing',
+      };
+      setKeyStatuses(statuses);
+
+      // If current model's key is not active, automatically fall back to the next active model
+      const current = providerRef.current;
+      if (statuses[current] !== 'active') {
+        const nextActive = ORDERED_PROVIDERS.find((p) => statuses[p] === 'active');
+        if (nextActive && nextActive !== current) {
+          setProvider(nextActive);
+        }
+      }
+    } catch (err) {
+      console.warn('Unable to verify provider key statuses:', err);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchModels()
-      .then((d) => {
-        const geminiModel = d.models?.find((m) => m.id === 'gemini');
-        setIsKeyConfigured(!!geminiModel?.available);
-      })
-      .catch(() => {});
-  }, []);
+    refreshKeyStatuses();
+  }, [refreshKeyStatuses]);
 
   useEffect(() => {
     if (activeChatId) loadMessages(activeChatId);
@@ -77,23 +109,30 @@ export default function App() {
   }, [messages, streamingContent]);
 
   const handleNewChat = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setAuthModalTitle('Sign in to start a new chat');
+      setAuthModalOpen(true);
+      return;
+    }
     const chat = await createChat('New chat');
     if (chat) {
       setActiveChatId(chat.id);
       clearMessages();
       setError(null);
+      setCurrentView('chat');
     }
   }, [user, createChat, clearMessages]);
 
   const handleSelectChat = (id) => {
     setActiveChatId(id);
     setError(null);
+    setCurrentView('chat');
   };
 
   const handleSend = async (text) => {
     if (!session?.access_token) {
-      setError('Please sign in to chat with Zentra.');
+      setAuthModalTitle('Sign in to chat with Zentra');
+      setAuthModalOpen(true);
       return;
     }
     setError(null);
@@ -114,9 +153,10 @@ export default function App() {
     abortRef.current = controller;
 
     let full = '';
+    const currentActiveProvider = provider;
     try {
       await streamChat({
-        provider: 'gemini',
+        provider: currentActiveProvider,
         persona: 'default',
         messages: history.map((m) => ({ role: m.role, content: m.content })),
         token: session.access_token,
@@ -128,7 +168,7 @@ export default function App() {
         onDone: async (data) => {
           if (data?.aborted) return;
           const final = data?.content || full;
-          await addMessage(chatId, 'assistant', final, 'gemini');
+          await addMessage(chatId, 'assistant', final, currentActiveProvider);
           setStreamingContent('');
           setIsStreaming(false);
         },
@@ -137,11 +177,13 @@ export default function App() {
           setIsStreaming(false);
           setStreamingContent('');
         },
-        onFallback: () => {},
+        onFallback: (fb) => {
+          if (fb?.to) setProvider(fb.to);
+        },
       });
     } catch (err) {
       if (err.name !== 'AbortError') {
-        setError(err.message || 'Unable to connect to Zentra API');
+        setError(err.message || 'Unable to connect to AI provider API');
       }
       setIsStreaming(false);
       setStreamingContent('');
@@ -152,7 +194,7 @@ export default function App() {
     abortRef.current?.abort();
     setIsStreaming(false);
     if (streamingContent && activeChatId) {
-      addMessage(activeChatId, 'assistant', streamingContent + ' [stopped]', 'gemini');
+      addMessage(activeChatId, 'assistant', streamingContent + ' [stopped]', provider);
       setStreamingContent('');
     }
   };
@@ -170,25 +212,62 @@ export default function App() {
     handleSend(prompt);
   };
 
-  const userName = user?.user_metadata?.name?.split(' ')[0] || 'Traveler';
+  const handleSwitchAccount = async () => {
+    await switchAccount();
+    setAuthModalTitle('Switch Account');
+    setAuthModalOpen(true);
+  };
 
+  const handleLaunchFromLanding = ({ provider: selectedProvider, prompt }) => {
+    if (selectedProvider) setProvider(selectedProvider);
+    if (prompt) setPrefilledText(prompt);
+    setCurrentView('chat');
+  };
+
+  const userName = user?.user_metadata?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'Traveler';
+
+  // Landing Page View
+  if (currentView === 'landing') {
+    return (
+      <>
+        <LandingPage
+          onLaunchChat={handleLaunchFromLanding}
+          onSignIn={async (p) => {
+            await signIn(p);
+            setCurrentView('chat');
+          }}
+          user={user}
+        />
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onSignIn={signIn}
+          title={authModalTitle}
+        />
+      </>
+    );
+  }
+
+  // Chat Studio View
   return (
     <div className="h-screen flex flex-col bg-gemini-dark text-gray-100 overflow-hidden font-sans relative">
-      {/* 3D Morphing Particle Wave Sphere in Background (from SS.jpeg) */}
+      {/* 4. Shared 3D Morphing Particle Wave Sphere (Three.js) */}
       <Background3D isStreaming={isStreaming} />
 
       {/* Top Header */}
       <Header
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        provider={provider}
-        setProvider={setProvider}
         user={user}
-        onSignIn={signIn}
+        onOpenSignIn={() => {
+          setAuthModalTitle('Sign in to Zentra');
+          setAuthModalOpen(true);
+        }}
         onSignOut={signOut}
+        onSwitchAccount={handleSwitchAccount}
         onNewChat={handleNewChat}
-        onOpenApiKeyGuide={() => setApiKeyModalOpen(true)}
-        isKeyConfigured={isKeyConfigured}
+        onToggleLanding={() => setCurrentView('landing')}
+        isLandingView={false}
       />
 
       <div className="flex flex-1 overflow-hidden relative z-10">
@@ -205,10 +284,8 @@ export default function App() {
             if (activeChatId === id) setActiveChatId(null);
           }}
           collapsed={!sidebarOpen}
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          onOpenApiKeyGuide={() => setApiKeyModalOpen(true)}
         />
 
         {/* Center Chat View */}
@@ -218,7 +295,6 @@ export default function App() {
               {/* Empty State Greeting & Cards */}
               {messages.length === 0 && !streamingContent && (
                 <div className="py-8 sm:py-16 space-y-8 animate-fade-in">
-                  {/* Zentra Gradient Greeting */}
                   <div>
                     <h1 className="text-4xl sm:text-5xl font-medium tracking-tight bg-gradient-to-r from-sky-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent">
                       Hello, {userName}
@@ -228,7 +304,7 @@ export default function App() {
                     </h2>
                   </div>
 
-                  {/* 4 Zentra Suggestion Cards */}
+                  {/* 4 Suggestion Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-4">
                     {ZENTRA_CARDS.map((card, idx) => {
                       const Icon = card.icon;
@@ -277,28 +353,21 @@ export default function App() {
                 <div className="flex items-center gap-3 py-4 text-gray-400 text-sm animate-pulse bg-gemini-surface/50 backdrop-blur-md px-4 rounded-2xl border border-gemini-border/40 w-fit">
                   <ZentraSparkle className="w-5 h-5 animate-spin" id="zentra_thinking_sparkle" />
                   <span className="bg-gradient-to-r from-sky-400 via-indigo-300 to-fuchsia-400 bg-clip-text text-transparent font-medium">
-                    Thinking with Zentra 3.8 Flash...
+                    Thinking with {provider === 'gemini' ? 'Zentra 3.8 Flash' : provider}...
                   </span>
                 </div>
               )}
 
-              {/* Error banner with Free Key Guide shortcut */}
+              {/* Error banner */}
               {error && (
                 <div className="p-4 rounded-2xl bg-red-950/60 backdrop-blur-md border border-red-500/40 text-sm text-red-200 flex items-start justify-between gap-3 animate-fade-in shadow-xl">
                   <div className="flex items-start gap-2.5">
                     <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
                     <div>
-                      <div className="font-semibold text-red-100">Zentra Notice</div>
+                      <div className="font-semibold text-red-100">Notice</div>
                       <div className="text-xs text-red-300/90 mt-0.5">{error}</div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setApiKeyModalOpen(true)}
-                    className="px-3 py-1.5 rounded-full bg-red-500/20 hover:bg-red-500/30 text-xs font-medium text-red-200 transition shrink-0 flex items-center gap-1.5"
-                  >
-                    <Key size={13} />
-                    <span>Free Key Guide</span>
-                  </button>
                 </div>
               )}
 
@@ -306,7 +375,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Floating Prompt Bar at the bottom */}
+          {/* 2. Floating Prompt Bar with Embedded Model Picker */}
           <Composer
             onSend={handleSend}
             onStop={handleStop}
@@ -314,16 +383,20 @@ export default function App() {
             disabled={!user}
             prefilledText={prefilledText}
             onClearPrefilledText={() => setPrefilledText('')}
-            onOpenApiKeyGuide={() => setApiKeyModalOpen(true)}
+            provider={provider}
+            setProvider={setProvider}
+            keyStatuses={keyStatuses}
+            onRefreshKeys={refreshKeyStatuses}
           />
         </main>
       </div>
 
-      {/* Zentra Free API Key Documentation Modal */}
-      <GeminiApiKeyModal
-        isOpen={apiKeyModalOpen}
-        onClose={() => setApiKeyModalOpen(false)}
-        isKeyConfigured={isKeyConfigured}
+      {/* 5. Auth Modal (Google & Discord only, queryParams prompt: "select_account" / "consent") */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSignIn={signIn}
+        title={authModalTitle}
       />
     </div>
   );

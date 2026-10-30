@@ -16,6 +16,15 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api', apiRoutes);
+app.get('/check-keys', async (req, res) => {
+  try {
+    const { checkAllKeys } = await import('./services/ai.js');
+    const statuses = await checkAllKeys();
+    res.json(statuses);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check keys' });
+  }
+});
 
 if (process.env.NODE_ENV === 'production') {
   const dist = path.join(__dirname, '..', 'dist');

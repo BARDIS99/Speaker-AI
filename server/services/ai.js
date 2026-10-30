@@ -8,7 +8,7 @@ function getSystemPrompt(personaId) {
 
 async function* streamGemini(messages, personaId, signal) {
   const apiKey = config.keys.gemini || process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Google Gemini API key is missing. You can get a free API key at https://aistudio.google.com/app/apikey (no credit card required).');
+  if (!apiKey) throw new Error('Google Gemini API key is missing or not configured on the server.');
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
@@ -42,10 +42,9 @@ async function* streamGemini(messages, personaId, signal) {
     if (
       err.message?.includes('API_KEY_INVALID') ||
       err.message?.includes('API key not valid') ||
-      err.message?.includes('free tier is not available') ||
       err.message?.includes('PERMISSION_DENIED')
     ) {
-      throw new Error('Gemini API access notice: Please generate your free API key at https://aistudio.google.com/app/apikey and configure GEMINI_API_KEY.');
+      throw new Error('Gemini API access notice: Please check your GEMINI_API_KEY credentials.');
     }
     throw err;
   }
@@ -153,4 +152,100 @@ export function getAvailableModels() {
     supportsImages: p.supportsImages,
     available: p.id === 'gemini' ? !!geminiKey : !!config.keys[p.id],
   }));
+}
+
+async function checkGeminiKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) return 'missing';
+  try {
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+    const res = await ai.models.generateContent({
+      model: PROVIDERS.gemini.model,
+      contents: 'ping',
+      config: {
+        maxOutputTokens: 1,
+      },
+    });
+    return (res && res.text !== undefined) ? 'active' : 'inactive';
+  } catch (err) {
+    return 'inactive';
+  }
+}
+
+async function checkGroqKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) return 'missing';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    return res.ok ? 'active' : 'inactive';
+  } catch {
+    return 'inactive';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkOpenRouterKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) return 'missing';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    return res.ok ? 'active' : 'inactive';
+  } catch {
+    return 'inactive';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkMistralKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) return 'missing';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch('https://api.mistral.ai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    return res.ok ? 'active' : 'inactive';
+  } catch {
+    return 'inactive';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function checkAllKeys() {
+  const geminiKey = process.env.GEMINI_API_KEY || config.keys.gemini;
+  const groqKey = process.env.GROQ_API_KEY || config.keys.groq;
+  const openrouterKey = process.env.OPENROUTER_API_KEY || config.keys.openrouter;
+  const mistralKey = process.env.MISTRAL_API_KEY || config.keys.mistral;
+
+  const [gemini, groq, openrouter, mistral] = await Promise.all([
+    checkGeminiKey(geminiKey),
+    checkGroqKey(groqKey),
+    checkOpenRouterKey(openrouterKey),
+    checkMistralKey(mistralKey),
+  ]);
+
+  return {
+    gemini,
+    groq,
+    openrouter,
+    mistral,
+  };
 }

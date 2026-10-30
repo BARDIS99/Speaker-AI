@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth.js';
 import { validateChat } from '../middleware/validate.js';
-import { streamChat, getAvailableModels } from '../services/ai.js';
+import { streamChat, getAvailableModels, checkAllKeys } from '../services/ai.js';
 import { PROVIDERS } from '../config/providers.js';
 
 const router = Router();
@@ -20,6 +20,15 @@ router.get('/health', (req, res) => {
 
 router.get('/models', (req, res) => {
   res.json({ models: getAvailableModels() });
+});
+
+router.get('/check-keys', async (req, res) => {
+  try {
+    const statuses = await checkAllKeys();
+    res.json(statuses);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check keys' });
+  }
 });
 
 router.post('/chat', requireAuth, chatLimiter, validateChat, async (req, res) => {

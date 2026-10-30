@@ -196,9 +196,12 @@ export default function Background3D({ isStreaming = false }) {
 
     // Animation loop with harmonic sinusoidal deformation
     let frameId = 0;
+    let isRunning = true;
     const clock = new THREE.Clock();
 
     const tick = () => {
+      if (!isRunning) return;
+
       const elapsedTime = clock.getElapsedTime();
       const isStreamingActive = isStreamingRef.current;
 
@@ -247,10 +250,26 @@ export default function Background3D({ isStreaming = false }) {
       frameId = requestAnimationFrame(tick);
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        isRunning = false;
+        cancelAnimationFrame(frameId);
+      } else {
+        if (!isRunning) {
+          isRunning = true;
+          frameId = requestAnimationFrame(tick);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     frameId = requestAnimationFrame(tick);
 
     return () => {
+      isRunning = false;
       cancelAnimationFrame(frameId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('resize', onResize);
       mount.removeChild(renderer.domElement);

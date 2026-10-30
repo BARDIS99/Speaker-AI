@@ -38,18 +38,13 @@ export function useAuth() {
   }, []);
 
   const signIn = useCallback(async (provider) => {
-    const providerKey = provider === 'x' ? 'twitter' : provider;
     if (!isSupabaseConfigured()) {
       const name =
         provider === 'google'
-          ? 'Google Member'
-          : provider === 'github'
-          ? 'GitHub Developer'
-          : provider === 'x'
-          ? 'X Creator'
+          ? 'Google User'
           : provider === 'discord'
-          ? 'Discord Community Member'
-          : 'Speaker AI Member';
+          ? 'Discord User'
+          : 'Zentra User';
 
       const mockUser = {
         id: `user-${provider}`,
@@ -63,21 +58,39 @@ export function useAuth() {
       setSession({ access_token: `guest-${provider}-token`, user: mockUser });
       return mockUser;
     }
+
+    const options = {
+      redirectTo: window.location.origin,
+    };
+
+    if (provider === 'google') {
+      options.queryParams = { prompt: 'select_account' };
+    } else if (provider === 'discord') {
+      options.queryParams = { prompt: 'consent' };
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: providerKey,
-      options: { redirectTo: window.location.origin },
+      provider,
+      options,
     });
     if (error) throw error;
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!isSupabaseConfigured()) {
-      setUser(null);
-      setSession(null);
-      return;
+    if (isSupabaseConfigured()) {
+      await supabase.auth.signOut();
     }
-    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
   }, []);
 
-  return { user, session, loading, signIn, signOut, isConfigured: isSupabaseConfigured() };
+  const switchAccount = useCallback(async () => {
+    if (isSupabaseConfigured()) {
+      await supabase.auth.signOut();
+    }
+    setUser(null);
+    setSession(null);
+  }, []);
+
+  return { user, session, loading, signIn, signOut, switchAccount, isConfigured: isSupabaseConfigured() };
 }

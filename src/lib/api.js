@@ -4,6 +4,12 @@ export async function fetchModels() {
   return res.json();
 }
 
+export async function checkKeys() {
+  const res = await fetch('/api/check-keys');
+  if (!res.ok) throw new Error('Failed to check keys');
+  return res.json();
+}
+
 export async function streamChat({ provider, persona, messages, token, onChunk, onDone, onError, onFallback, signal }) {
   const res = await fetch('/api/chat', {
     method: 'POST',
