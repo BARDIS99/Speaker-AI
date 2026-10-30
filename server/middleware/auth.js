@@ -4,6 +4,10 @@ import { config } from '../config/index.js';
 export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
+    if (!config.supabaseUrl || !config.supabaseAnonKey) {
+      req.user = { id: 'guest-user', email: 'guest@speaker.ai' };
+      return next();
+    }
     return res.status(401).json({ error: 'Missing or invalid authorization header' });
   }
 

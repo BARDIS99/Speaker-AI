@@ -8,7 +8,7 @@ function getSystemPrompt(personaId) {
 
 async function* streamGemini(messages, personaId, signal) {
   const apiKey = config.keys.gemini || process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Gemini API key not configured');
+  if (!apiKey) throw new Error('Google Gemini API key is missing or needs to be selected in the Settings > Secrets panel.');
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { config } from './config/index.js';
 import apiRoutes from './routes/api.js';
@@ -29,6 +30,18 @@ if (process.env.NODE_ENV === 'production') {
     appType: 'spa',
   });
   app.use(vite.middlewares);
+  app.use('*', async (req, res, next) => {
+    try {
+      const url = req.originalUrl;
+      const indexHtmlPath = path.resolve(__dirname, '..', 'index.html');
+      let template = fs.readFileSync(indexHtmlPath, 'utf-8');
+      template = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+    } catch (e) {
+      vite.ssrFixStacktrace?.(e);
+      next(e);
+    }
+  });
 }
 
 app.use((err, req, res, next) => {
