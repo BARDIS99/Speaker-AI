@@ -30,18 +30,27 @@ export function useMessages() {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('chat_id', chatId)
-      .order('created_at', { ascending: true });
-    if (!error) setMessages(data || []);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: true });
+      if (error || !data) {
+        setMessages(getLocalMessages(chatId));
+      } else {
+        setMessages(data);
+      }
+    } catch {
+      setMessages(getLocalMessages(chatId));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const addMessage = useCallback(async (chatId, role, content, model = null) => {
+    const local = { id: crypto.randomUUID(), chat_id: chatId, role, content, model, created_at: new Date().toISOString() };
     if (!supabase) {
-      const local = { id: crypto.randomUUID(), chat_id: chatId, role, content, model, created_at: new Date().toISOString() };
       setMessages((prev) => {
         const next = [...prev, local];
         if (chatId) saveLocalMessages(chatId, next);
@@ -49,15 +58,31 @@ export function useMessages() {
       });
       return local;
     }
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({ chat_id: chatId, role, content, model })
-      .select()
-      .single();
-    if (error) throw error;
-    setMessages((prev) => [...prev, data]);
-    await supabase.from('chats').update({ updated_at: new Date().toISOString() }).eq('id', chatId);
-    return data;
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({ chat_id: chatId, role, content, model })
+        .select()
+        .single();
+      if (error || !data) {
+        setMessages((prev) => {
+          const next = [...prev, local];
+          if (chatId) saveLocalMessages(chatId, next);
+          return next;
+        });
+        return local;
+      }
+      setMessages((prev) => [...prev, data]);
+      await supabase.from('chats').update({ updated_at: new Date().toISOString() }).eq('id', chatId).catch(() => {});
+      return data;
+    } catch {
+      setMessages((prev) => {
+        const next = [...prev, local];
+        if (chatId) saveLocalMessages(chatId, next);
+        return next;
+      });
+      return local;
+    }
   }, []);
 
   const clearMessages = useCallback(() => setMessages([]), []);

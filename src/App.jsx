@@ -109,11 +109,6 @@ export default function App() {
   }, [messages, streamingContent]);
 
   const handleNewChat = useCallback(async () => {
-    if (!user) {
-      setAuthModalTitle('Sign in to start a new chat');
-      setAuthModalOpen(true);
-      return;
-    }
     const chat = await createChat('New chat');
     if (chat) {
       setActiveChatId(chat.id);
@@ -121,7 +116,7 @@ export default function App() {
       setError(null);
       setCurrentView('chat');
     }
-  }, [user, createChat, clearMessages]);
+  }, [createChat, clearMessages]);
 
   const handleSelectChat = (id) => {
     setActiveChatId(id);
@@ -130,11 +125,7 @@ export default function App() {
   };
 
   const handleSend = async (text) => {
-    if (!session?.access_token) {
-      setAuthModalTitle('Sign in to chat with Zentra');
-      setAuthModalOpen(true);
-      return;
-    }
+    const token = session?.access_token || 'guest-session-token';
     setError(null);
     let chatId = activeChatId;
     if (!chatId) {
@@ -380,7 +371,7 @@ export default function App() {
             onSend={handleSend}
             onStop={handleStop}
             isStreaming={isStreaming}
-            disabled={!user}
+            disabled={isStreaming}
             prefilledText={prefilledText}
             onClearPrefilledText={() => setPrefilledText('')}
             provider={provider}

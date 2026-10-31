@@ -25,13 +25,28 @@ export function useAuth() {
       return;
     }
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setSession(session);
+        setUser(session.user);
+      } else {
+        setSession(GUEST_SESSION);
+        setUser(GUEST_USER);
+      }
+      setLoading(false);
+    }).catch(() => {
+      setSession(GUEST_SESSION);
+      setUser(GUEST_USER);
       setLoading(false);
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setSession(session);
+        setUser(session.user);
+      } else {
+        setSession(GUEST_SESSION);
+        setUser(GUEST_USER);
+      }
       setLoading(false);
     });
     return () => subscription.unsubscribe();
@@ -78,18 +93,18 @@ export function useAuth() {
 
   const signOut = useCallback(async () => {
     if (isSupabaseConfigured()) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut().catch(() => {});
     }
-    setUser(null);
-    setSession(null);
+    setUser(GUEST_USER);
+    setSession(GUEST_SESSION);
   }, []);
 
   const switchAccount = useCallback(async () => {
     if (isSupabaseConfigured()) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut().catch(() => {});
     }
-    setUser(null);
-    setSession(null);
+    setUser(GUEST_USER);
+    setSession(GUEST_SESSION);
   }, []);
 
   return { user, session, loading, signIn, signOut, switchAccount, isConfigured: isSupabaseConfigured() };

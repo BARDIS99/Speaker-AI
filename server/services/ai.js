@@ -163,14 +163,12 @@ async function checkGeminiKey(apiKey) {
         headers: {
           'User-Agent': 'aistudio-build',
         },
+        timeout: 15000,
       },
     });
     const res = await ai.models.generateContent({
       model: PROVIDERS.gemini.model,
       contents: 'ping',
-      config: {
-        maxOutputTokens: 1,
-      },
     });
     return (res && res.text !== undefined) ? 'active' : 'inactive';
   } catch (err) {

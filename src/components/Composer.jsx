@@ -9,10 +9,10 @@ const QUICK_SUGGESTIONS = [
 ];
 
 const AI_MODELS = [
-  { id: 'gemini', name: 'Zentra (Gemini 3.8)', shortName: 'Zentra' },
-  { id: 'groq', name: 'Groq (Llama 3.3)', shortName: 'Groq' },
-  { id: 'openrouter', name: 'OpenRouter (Llama 3.2)', shortName: 'OpenRouter' },
-  { id: 'mistral', name: 'Mistral (Small)', shortName: 'Mistral' },
+  { id: 'gemini', name: 'Zentra (Gemini Flash)', shortName: 'Zentra' },
+  { id: 'groq', name: 'Groq (Qwen 3.8)', shortName: 'Groq' },
+  { id: 'openrouter', name: 'OpenRouter (Nemotron)', shortName: 'OpenRouter' },
+  { id: 'mistral', name: 'Mistral (8B)', shortName: 'Mistral' },
 ];
 
 function getDotClass(status) {
